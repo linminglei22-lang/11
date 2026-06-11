@@ -53,6 +53,8 @@ const Sound = (() => {
     take() { clack(0.04, 0.12, 0, 3000); tone(740, 0.07, 'triangle', 0.08); },  // 拿起
     place() { clack(0.05, 0.26, 0, 2100); tone(185, 0.1, 'sine', 0.2, 0.004); },// 落子（陶瓷脆响+闷击）
     score() { tone(880, 0.12, 'sine', 0.12); tone(1318.5, 0.2, 'sine', 0.12, 0.1); },
+    combo(n) { for (let i = 0; i < Math.min(n, 5); i++) tone(620 * Math.pow(1.16, i), 0.1, 'triangle', 0.1, i * 0.07); },
+    penalty() { tone(230, 0.16, 'sawtooth', 0.06); tone(155, 0.24, 'sawtooth', 0.07, 0.09); },
     over() { [523.3, 659.3, 784, 1046.5].forEach((f, i) => tone(f, 0.28, 'sine', 0.13, i * 0.14)); },
     toggle() { muted = !muted; localStorage.setItem('azul_muted', muted ? '1' : '0'); return muted; },
     isMuted: () => muted,
@@ -98,43 +100,170 @@ function flyTiles(fromEl, toEl, color, count, onDone) {
   if (n === 0 && onDone) onDone();
 }
 
-// 回合结算特效：墙壁新贴瓷砖弹跳 + 得分飘字（+N / -N）
-function wallTilingFx(scoreEvents) {
-  let delay = 0;
-  for (const { seatIndex, events } of scoreEvents) {
-    const board = document.querySelector(`.board[data-seat="${seatIndex}"]`);
-    if (!board) continue;
-    for (const ev of events) {
-      let anchor = null;
-      if (ev.type === 'wall') {
-        const row = board.querySelectorAll('.wall-row')[ev.row];
-        anchor = row && row.children[ev.col];
-        if (anchor) {
-          setTimeout(() => {
-            anchor.classList.add('just-placed');
-            Sound.place();
-            setTimeout(() => anchor.classList.remove('just-placed'), 700);
-          }, delay);
-        }
-      } else if (ev.type === 'floor') {
-        anchor = board.querySelector('.floor-row');
-      }
-      if (anchor && ev.points !== 0) {
-        const r = anchor.getBoundingClientRect();
-        const pts = ev.points;
-        setTimeout(() => {
-          const label = document.createElement('div');
-          label.className = `score-float ${pts > 0 ? 'gain' : 'loss'}`;
-          label.textContent = pts > 0 ? `+${pts}` : `${pts}`;
-          label.style.left = r.left + r.width / 2 + 'px';
-          label.style.top = r.top - 6 + 'px';
-          document.body.appendChild(label);
-          setTimeout(() => label.remove(), 1400);
-        }, delay);
-        delay += 260;
-      }
-    }
+/* ============ 回合结算演出（逐玩家、逐瓷砖的慢节奏计分） ============ */
+// GamePage 挂载时注册视角切换能力，演出引擎据此依次展示每个玩家的板子
+const FxBus = { setViewSeat: null, mySeat: -1 };
+
+// 特效播放队列：保证"拿牌动画 → 结算演出 → 下一手动画 → 排名弹窗"严格按序播放
+let fxChain = Promise.resolve();
+let fxGen = 0;
+function fxEnqueue(task) {
+  const gen = fxGen;
+  fxChain = fxChain
+    .then(() => (gen === fxGen ? new Promise((done) => task(done)) : null))
+    .catch(() => {});
+}
+function fxReset() {
+  fxGen++;
+  fxChain = Promise.resolve();
+  document.body.classList.remove('scoring-lock');
+  const b = document.getElementById('scoring-banner');
+  if (b) b.remove();
+}
+const fxWait = (ms) => new Promise((r) => setTimeout(r, ms));
+
+function spawnFloat(anchorEl, pts) {
+  const r = anchorEl.getBoundingClientRect();
+  const label = document.createElement('div');
+  label.className = `score-float ${pts > 0 ? 'gain' : 'loss'}`;
+  label.textContent = pts > 0 ? `+${pts}` : `${pts}`;
+  label.style.left = r.left + r.width / 2 + 'px';
+  label.style.top = r.top - 6 + 'px';
+  document.body.appendChild(label);
+  setTimeout(() => label.remove(), 1500);
+}
+
+// 从 DOM 读出经过 (row, col) 的横竖连续已贴瓷砖（用于相邻抖动）
+function connectedCells(board, row, col) {
+  const rows = [...board.querySelectorAll('.wall-row')].map((r) => [...r.children]);
+  const filled = (r, c) => rows[r] && rows[r][c] && rows[r][c].classList.contains('filled');
+  const set = new Set();
+  let h = [rows[row][col]];
+  for (let c = col - 1; c >= 0 && filled(row, c); c--) h.push(rows[row][c]);
+  for (let c = col + 1; c < 5 && filled(row, c); c++) h.push(rows[row][c]);
+  let v = [];
+  for (let r = row - 1; r >= 0 && filled(r, col); r--) v.push(rows[r][col]);
+  for (let r = row + 1; r < 5 && filled(r, col); r++) v.push(rows[r][col]);
+  if (h.length > 1) h.forEach((c) => set.add(c));
+  if (v.length > 0) { v.forEach((c) => set.add(c)); set.add(rows[row][col]); }
+  return [...set];
+}
+
+// 单块瓷砖：图案行 → 平移上墙 → 点亮 → 相邻抖动 → 飘分
+async function animateWallPlacement(board, ev, tick) {
+  const pline = board.querySelectorAll('.pline')[ev.row];
+  const wallRow = board.querySelectorAll('.wall-row')[ev.row];
+  const cell = wallRow && wallRow.children[ev.col];
+  if (!cell) return;
+
+  const srcTiles = pline ? [...pline.querySelectorAll('.tile')] : [];
+  const srcTile = srcTiles[srcTiles.length - 1] || pline || cell;
+  const from = srcTile.getBoundingClientRect();
+  const to = cell.getBoundingClientRect();
+  const clone = document.createElement('div');
+  clone.className = `tile fly-tile ${ev.color}`;
+  clone.style.left = from.left + 'px';
+  clone.style.top = from.top + 'px';
+  clone.style.width = '30px';
+  clone.style.height = '30px';
+  document.body.appendChild(clone);
+  srcTiles.forEach((t) => t.classList.add('tile-consumed'));
+  Sound.take();
+
+  const dx = to.left - from.left, dy = to.top - from.top;
+  await new Promise((r) => {
+    const a = clone.animate([
+      { transform: 'translate(0,0) scale(1)' },
+      { transform: `translate(${dx * 0.5}px, ${dy * 0.5 - 22}px) scale(1.18)`, offset: 0.5 },
+      { transform: `translate(${dx}px, ${dy}px) scale(1)` },
+    ], { duration: 700, easing: 'cubic-bezier(.3,.6,.35,1)', fill: 'both' });
+    a.onfinish = r;
+    setTimeout(r, 1000); // 后台标签页兜底
+  });
+  clone.remove();
+
+  // 点亮
+  cell.classList.add('filled', 'lit', 'just-placed');
+  Sound.place();
+  await fxWait(280);
+  cell.classList.remove('just-placed');
+
+  // 相邻连线抖动（有邻接才有）
+  const linked = connectedCells(board, ev.row, ev.col);
+  if (linked.length > 1) {
+    linked.forEach((c) => c.classList.add('adj-shake'));
+    Sound.combo(linked.length);
+    await fxWait(450);
+    linked.forEach((c) => c.classList.remove('adj-shake'));
   }
+
+  // 飘分 + 分数累加
+  spawnFloat(cell, ev.points);
+  tick(ev.points);
+  Sound.score();
+  await fxWait(580);
+}
+
+// 地板扣分：抖动 → 飘负分 → 瓷砖淡出
+async function animateFloorPenalty(board, ev, tick) {
+  const floor = board.querySelector('.floor-row');
+  if (!floor || ev.points === 0) return;
+  const tiles = [...floor.querySelectorAll('.tile')];
+  tiles.forEach((t) => t.classList.add('adj-shake'));
+  await fxWait(450);
+  tiles.forEach((t) => { t.classList.remove('adj-shake'); t.classList.add('tile-consumed'); });
+  spawnFloat(floor, ev.points);
+  tick(ev.points);
+  Sound.penalty();
+  await fxWait(650);
+}
+
+// 总演出：按座位顺序切到每个玩家的板子，逐块结算
+async function playScoringCinematic(scoreEvents, commit) {
+  const gen = fxGen;
+  try {
+    document.body.classList.add('scoring-lock');
+    const banner = document.createElement('div');
+    banner.id = 'scoring-banner';
+    banner.className = 'scoring-banner';
+    banner.textContent = '🧮 回合结算';
+    document.body.appendChild(banner);
+
+    for (const { seatIndex, events } of scoreEvents) {
+      if (gen !== fxGen) break;
+      if (!events || events.length === 0) continue;
+      if (FxBus.setViewSeat) FxBus.setViewSeat(seatIndex);
+      await fxWait(520); // 留时间渲染与视线转移
+
+      const board = document.querySelector(`.board[data-seat="${seatIndex}"]`);
+      if (!board) continue;
+      const nameEl = board.querySelector('.board-head .name');
+      banner.textContent = `🧮 回合结算 · ${nameEl ? nameEl.textContent : ''}`;
+
+      const scoreSpan = board.querySelector('.board-head .score span');
+      let running = parseInt((scoreSpan && scoreSpan.textContent) || '0', 10) || 0;
+      const tick = (delta) => {
+        running = Math.max(0, running + delta);
+        if (scoreSpan) {
+          scoreSpan.textContent = running;
+          scoreSpan.classList.remove('score-pop');
+          void scoreSpan.offsetWidth; // 重启动画
+          scoreSpan.classList.add('score-pop');
+        }
+      };
+      for (const ev of events) {
+        if (gen !== fxGen) break;
+        if (ev.type === 'wall') await animateWallPlacement(board, ev, tick);
+        else if (ev.type === 'floor') await animateFloorPenalty(board, ev, tick);
+      }
+      await fxWait(380);
+    }
+  } catch { /* 演出异常不能阻塞游戏 */ }
+  document.body.classList.remove('scoring-lock');
+  const b = document.getElementById('scoring-banner');
+  if (b) b.remove();
+  if (FxBus.setViewSeat && FxBus.mySeat >= 0) FxBus.setViewSeat(FxBus.mySeat);
+  commit();
 }
 
 // 根据 lastAction 播放"来源 → 目标玩家板"的飞砖动画，结束后提交新状态
@@ -428,21 +557,18 @@ function GamePage({ socket, game, room, user, toast }) {
   const [popSeats, setPopSeats] = useState({}); // 得分动画
   const prevScores = useRef(game.players.map((p) => p.score));
 
-  // 轮次切换 → 横幅 + 得分动画
+  // GamePage 在场时向演出引擎提供视角切换能力
   useEffect(() => {
-    if (game.round !== prevRound.current || game.phase === 'finished') {
-      if (game.round !== prevRound.current) setRoundBanner(`第 ${game.round} 轮 · 拼贴计分完成`);
-      if (game.scoreEvents && game.scoreEvents.length > 0) {
-        // 等本帧渲染出新墙壁后再播放拼贴特效
-        requestAnimationFrame(() => wallTilingFx(game.scoreEvents));
-      }
-      const pops = {};
-      game.players.forEach((p, i) => {
-        if (p.score !== prevScores.current[i]) pops[i] = Date.now();
-      });
-      setPopSeats(pops);
-      if (Object.keys(pops).length > 0) Sound.score();
-      const t = setTimeout(() => setRoundBanner(null), 2300);
+    FxBus.setViewSeat = setViewSeat;
+    FxBus.mySeat = mySeat;
+    return () => { if (FxBus.setViewSeat === setViewSeat) FxBus.setViewSeat = null; };
+  }, [mySeat]);
+
+  // 轮次切换横幅（结算演出由 playScoringCinematic 负责，这里只提示新一轮开始）
+  useEffect(() => {
+    if (game.round !== prevRound.current) {
+      setRoundBanner(`第 ${game.round} 轮开始`);
+      const t = setTimeout(() => setRoundBanner(null), 2000);
       prevRound.current = game.round;
       prevScores.current = game.players.map((p) => p.score);
       return () => clearTimeout(t);
@@ -728,12 +854,17 @@ function App() {
     s.on('game_state', (g) => {
       const prev = gameRef.current;
       gameRef.current = g;
-      // 增量动作（seq 连续）→ 先播放飞砖动画再更新状态；否则（开局/重连）直接渲染
+      // 增量动作（seq 连续）→ 排队播放飞砖动画再更新状态；否则（开局/重连）直接渲染
       if (prev && g.lastAction && g.seq === (prev.seq || 0) + 1) {
-        runActionFx(g.lastAction, () => setGame(g));
+        fxEnqueue((done) => runActionFx(g.lastAction, () => { setGame(g); done(); }));
       } else {
+        fxReset();
         setGame(g);
       }
+    });
+    s.on('round_scored', ({ scoreEvents, finalState }) => {
+      gameRef.current = finalState;
+      fxEnqueue((done) => playScoringCinematic(scoreEvents, () => { setGame(finalState); done(); }));
     });
     s.on('ai_thinking', ({ nickname, model }) => toast(`🤖 ${nickname}（${model}）思考中…`));
     s.on('room_update', (r) => {
@@ -745,13 +876,13 @@ function App() {
         return r;
       });
     });
-    s.on('game_start', () => { setGame(null); setRanking(null); gameRef.current = null; });
+    s.on('game_start', () => { fxReset(); setGame(null); setRanking(null); gameRef.current = null; });
     s.on('ai_action', ({ nickname, say }) => {
       if (say) toast(`💬 ${nickname}：${say}`);
     });
     s.on('game_over', ({ ranking: rk }) => {
-      // 等飞砖动画结束再弹排名
-      setTimeout(() => { setRanking(rk); Sound.over(); }, 1200);
+      // 排队：等结算演出播完再弹排名
+      fxEnqueue((done) => { setRanking(rk); Sound.over(); done(); });
     });
     setSocket(s);
     return () => s.disconnect();

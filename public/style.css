@@ -140,21 +140,45 @@ table.rooms th { color: var(--ink-soft); font-size: 13px; font-weight: 600; }
 /* ---------- 瓷砖 ---------- */
 .tile {
   width: 34px; height: 34px; border-radius: 7px; display: inline-flex;
-  box-shadow: inset 0 -3px 0 rgba(0,0,0,.22), inset 0 2px 0 rgba(255,255,255,.3), 0 1px 3px rgba(0,0,0,.25);
   position: relative; flex: none;
-  background-image: radial-gradient(circle at 50% 50%, rgba(255,255,255,.28) 0 18%, transparent 19%);
+  background: linear-gradient(145deg, var(--t-hi, #ccc) 0%, var(--t-lo, #888) 100%);
+  box-shadow:
+    inset 0 1px 1px rgba(255,255,255,.55),
+    inset 0 -3px 3px rgba(0,0,0,.28),
+    inset 0 0 0 1px rgba(0,0,0,.14),
+    0 2px 4px rgba(45,30,18,.35);
+}
+/* 釉面高光 */
+.tile::before {
+  content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  background: linear-gradient(118deg, transparent 30%, rgba(255,255,255,.32) 45%, transparent 58%);
+}
+/* 摩尔风格纹样：中心圆环 + 四角花点 */
+.tile::after {
+  content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  --m: rgba(255,255,255,.30);
+  background-image:
+    radial-gradient(circle at 50% 50%, var(--m) 0 2.5px, transparent 3.5px),
+    radial-gradient(circle at 50% 50%, transparent 6.5px, var(--m) 7.5px 8.5px, transparent 9.5px),
+    radial-gradient(circle at 21% 21%, var(--m) 0 1.8px, transparent 2.8px),
+    radial-gradient(circle at 79% 21%, var(--m) 0 1.8px, transparent 2.8px),
+    radial-gradient(circle at 21% 79%, var(--m) 0 1.8px, transparent 2.8px),
+    radial-gradient(circle at 79% 79%, var(--m) 0 1.8px, transparent 2.8px);
 }
 .tile.sm { width: 22px; height: 22px; border-radius: 5px; }
-.tile.blue { background-color: var(--tile-blue); }
-.tile.yellow { background-color: var(--tile-yellow); }
-.tile.red { background-color: var(--tile-red); }
-.tile.black { background-color: var(--tile-black); }
-.tile.white { background-color: var(--tile-white); border: 1px solid #cfc4a8; }
+.tile.sm::after { transform: scale(.72); }
+.tile.blue { --t-hi: #4a92c3; --t-lo: #1c5680; }
+.tile.yellow { --t-hi: #f0c75e; --t-lo: #c08c26; }
+.tile.red { --t-hi: #cf5a40; --t-lo: #8e2e1e; }
+.tile.black { --t-hi: #5d525b; --t-lo: #272028; }
+.tile.white { --t-hi: #fdf9ee; --t-lo: #d9cdab; }
+.tile.white::after { --m: rgba(122, 98, 60, .20); }
 .tile.first {
-  background-color: #fff; border: 2px solid var(--accent);
+  background: #fff; border: 2px solid var(--accent);
   display: inline-flex; align-items: center; justify-content: center;
-  font-weight: 800; color: var(--accent); font-size: 15px; background-image: none;
+  font-weight: 800; color: var(--accent); font-size: 15px;
 }
+.tile.first::before, .tile.first::after { display: none; }
 .fly-tile {
   position: fixed; z-index: 80; pointer-events: none; margin: 0;
   filter: drop-shadow(0 6px 8px rgba(45, 30, 18, .35));
@@ -287,6 +311,28 @@ table.rooms th { color: var(--ink-soft); font-size: 13px; font-weight: 600; }
 .rank-row .rname { flex: 1; font-weight: 600; }
 .rank-row .rscore { font-size: 20px; font-weight: 800; color: var(--accent-dark); }
 .modal .actions { text-align: center; margin-top: 18px; }
+
+/* ---------- 回合结算演出 ---------- */
+.scoring-banner {
+  position: fixed; top: 14px; left: 50%; transform: translateX(-50%);
+  background: var(--teal); color: #fff6e8; font-weight: 700; font-size: 15px;
+  padding: 8px 24px; border-radius: 999px; box-shadow: var(--shadow); z-index: 90;
+  letter-spacing: 1px; animation: toastIn .25s ease;
+}
+.scoring-lock .mini-boards, .scoring-lock .factories-area, .scoring-lock .center-area {
+  pointer-events: none;
+}
+.tile-consumed { opacity: .12; transition: opacity .45s ease; }
+.adj-shake { animation: adjShake .45s ease; }
+@keyframes adjShake {
+  0%, 100% { transform: none; }
+  20% { transform: translate(-2px, 1px) rotate(-2.5deg); }
+  40% { transform: translate(2px, -1px) rotate(2.5deg); }
+  60% { transform: translate(-2px, -1px) rotate(-1.5deg); }
+  80% { transform: translate(2px, 1px) rotate(1.5deg); }
+}
+.wcell.lit { box-shadow: 0 0 12px 3px rgba(201, 154, 60, .75); transition: box-shadow .25s; }
+.wcell.lit .ghost { opacity: 1; inset: 0; border-radius: 6px; }
 
 .score-float {
   position: fixed; z-index: 85; pointer-events: none;

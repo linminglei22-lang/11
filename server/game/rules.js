@@ -157,12 +157,15 @@ function applyAction(state, seatIndex, action) {
     state.center.length === 0 && state.factories.every((f) => f.length === 0);
 
   let gameOver = false;
+  let preScore = null;
   if (roundEnded) {
+    // 结算前快照：供前端先渲染"拿完最后一手"的局面，再逐步播放结算动画
+    preScore = structuredClone(state);
     gameOver = endOfRound(state);
   } else {
     state.currentPlayer = (state.currentPlayer + 1) % state.players.length;
   }
-  return { roundEnded, gameOver };
+  return { roundEnded, gameOver, preScore };
 }
 
 function pushFloor(state, player, tile) {

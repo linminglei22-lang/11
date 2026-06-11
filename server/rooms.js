@@ -303,8 +303,7 @@ function removeMember(io, room, userId) {
 }
 
 // 发送给前端的状态（隐藏袋中顺序，防止前端预测抽牌）
-function publicState(room) {
-  const s = room.state;
+function publicStateOf(s) {
   return {
     ...s,
     bag: undefined,
@@ -313,10 +312,23 @@ function publicState(room) {
     discardCount: s.discard.length,
   };
 }
+function publicState(room) {
+  return publicStateOf(room.state);
+}
 
 function afterAction(io, room, result) {
   saveState(room);
-  io.to(`room:${room.id}`).emit('game_state', publicState(room));
+  if (result.roundEnded && result.preScore) {
+    // 先发结算前快照（前端播放最后一手的拿牌动画），再发结算脚本供前端逐步演出
+    io.to(`room:${room.id}`).emit('game_state', publicStateOf(result.preScore));
+    io.to(`room:${room.id}`).emit('round_scored', {
+      scoreEvents: room.state.scoreEvents,
+      finalState: publicState(room),
+      gameOver: result.gameOver,
+    });
+  } else {
+    io.to(`room:${room.id}`).emit('game_state', publicState(room));
+  }
 
   if (result.gameOver) {
     room.status = 'finished';
