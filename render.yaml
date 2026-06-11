@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: azul-online
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /
+    envVars:
+      - key: NODE_VERSION
+        value: 24.14.0
+      - key: JWT_SECRET
+        generateValue: true
+    # 免费套餐磁盘是临时的：每次部署/重启后 SQLite 数据（账号、战绩）会清空。
+    # 升级付费套餐后可取消下面注释，挂载持久磁盘保留数据：
+    # disk:
+    #   name: azul-data
+    #   mountPath: /var/data
+    #   sizeGB: 1
+    # 并在 envVars 中加入:
+    #   - key: DATA_DIR
+    #     value: /var/data
