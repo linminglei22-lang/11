@@ -65,7 +65,7 @@ async function chooseAction(state, seat, cfg) {
       Authorization: `Bearer ${cfg.apiKey}`,
     },
     body: JSON.stringify({
-      model: cfg.model || 'deepseek-chat',
+      model: cfg.model || 'deepseek-v4-flash',
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
         { role: 'user', content: buildPrompt(state, seat, actions) },

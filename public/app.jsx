@@ -332,7 +332,7 @@ function RoomPage({ socket, room, user, toast }) {
   const [aiName, setAiName] = useState('');
   const [aiDiff, setAiDiff] = useState('medium');
   const [llmCfg, setLlmCfg] = useState({
-    baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-chat', apiKey: '',
+    baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-v4-flash', apiKey: '',
   });
   const isHost = room.hostUserId === user.id;
 
@@ -391,7 +391,7 @@ function RoomPage({ socket, room, user, toast }) {
               </div>
               <input placeholder="API 地址" value={llmCfg.baseUrl}
                 onChange={(e) => setLlmCfg({ ...llmCfg, baseUrl: e.target.value })} />
-              <input placeholder="模型名（如 deepseek-chat）" value={llmCfg.model}
+              <input placeholder="模型名（如 deepseek-v4-flash / deepseek-v4-pro）" value={llmCfg.model}
                 onChange={(e) => setLlmCfg({ ...llmCfg, model: e.target.value })} />
               <input type="password" placeholder="API Key（必填）" value={llmCfg.apiKey}
                 onChange={(e) => setLlmCfg({ ...llmCfg, apiKey: e.target.value })} />
