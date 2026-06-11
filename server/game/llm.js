@@ -71,18 +71,29 @@ async function chooseAction(state, seat, cfg) {
         { role: 'user', content: buildPrompt(state, seat, actions) },
       ],
       temperature: 0.3,
-      max_tokens: 300,
+      // 推理模型（如 deepseek-v4 思考模式）会先消耗大量 token 思考，
+      // 上限太小会导致 content 为空，必须留足余量
+      max_tokens: 4000,
     }),
-    signal: AbortSignal.timeout(30000),
+    signal: AbortSignal.timeout(60000),
   });
   if (!res.ok) {
     const body = await res.text().catch(() => '');
     throw new Error(`API ${res.status}: ${body.slice(0, 200)}`);
   }
   const data = await res.json();
-  const text = data.choices?.[0]?.message?.content || '';
-  const m = text.match(/\{[\s\S]*?\}/);
-  if (!m) throw new Error(`无法从回复中解析 JSON: ${text.slice(0, 120)}`);
+  const msg = data.choices?.[0]?.message || {};
+  // 推理模型的最终答案在 content；若为空则从思考内容里兜底提取
+  const text = msg.content || msg.reasoning_content || '';
+  if (!text) {
+    throw new Error(
+      `回复内容为空（finish_reason=${data.choices?.[0]?.finish_reason}，` +
+      `可能是思考模型 token 耗尽或返回结构异常）`
+    );
+  }
+  // 优先匹配含 "action" 的 JSON 对象，避免误抓思考过程里的其他花括号
+  const m = text.match(/\{[^{}]*"action"[^{}]*\}/) || text.match(/\{[\s\S]*?\}/);
+  if (!m) throw new Error(`无法从回复中解析 JSON: ${text.slice(0, 150)}`);
   const parsed = JSON.parse(m[0]);
   const idx = Number(parsed.action);
   if (!Number.isInteger(idx) || idx < 0 || idx >= actions.length) {
