@@ -119,6 +119,8 @@ function fxReset() {
   document.body.classList.remove('scoring-lock');
   const b = document.getElementById('scoring-banner');
   if (b) b.remove();
+  sweepFxClasses();
+  document.querySelectorAll('.fly-tile, .score-float').forEach((el) => el.remove());
 }
 const fxWait = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -149,121 +151,132 @@ function connectedCells(board, row, col) {
   return [...set];
 }
 
-// 单块瓷砖：图案行 → 平移上墙 → 点亮 → 相邻抖动 → 飘分
-async function animateWallPlacement(board, ev, tick) {
-  const pline = board.querySelectorAll('.pline')[ev.row];
-  const wallRow = board.querySelectorAll('.wall-row')[ev.row];
-  const cell = wallRow && wallRow.children[ev.col];
-  if (!cell) return;
+// 清除演出过程中加在棋盘 DOM 上的临时装饰类。
+// 关键约束：演出绝不手动增删 filled 类、不改分数文本 —— 棋盘内容一律由 React 状态渲染，
+// 否则 React 复用 DOM 节点时（如切换查看的玩家板）会把 A 玩家的样式残留到 B 玩家盘上。
+function sweepFxClasses() {
+  document.querySelectorAll('.lit, .adj-shake, .tile-consumed').forEach((el) => {
+    el.classList.remove('lit', 'adj-shake', 'tile-consumed');
+  });
+}
 
-  const srcTiles = pline ? [...pline.querySelectorAll('.tile')] : [];
-  const srcTile = srcTiles[srcTiles.length - 1] || pline || cell;
-  const from = srcTile.getBoundingClientRect();
-  const to = cell.getBoundingClientRect();
-  const clone = document.createElement('div');
-  clone.className = `tile fly-tile ${ev.color}`;
-  clone.style.left = from.left + 'px';
-  clone.style.top = from.top + 'px';
-  clone.style.width = '30px';
-  clone.style.height = '30px';
-  document.body.appendChild(clone);
-  srcTiles.forEach((t) => t.classList.add('tile-consumed'));
-  Sound.take();
-
-  const dx = to.left - from.left, dy = to.top - from.top;
-  await new Promise((r) => {
+// 图案行最右瓷砖 → 平移上墙的飞行动画（纯叠加层，不触碰棋盘 DOM）
+function slideToWallFx(board, ev) {
+  return new Promise((resolve) => {
+    const pline = board.querySelectorAll('.pline')[ev.row];
+    const wallRow = board.querySelectorAll('.wall-row')[ev.row];
+    const cell = wallRow && wallRow.children[ev.col];
+    if (!cell) return resolve();
+    const srcTiles = pline ? pline.querySelectorAll('.tile') : [];
+    const src = srcTiles.length ? srcTiles[srcTiles.length - 1] : (pline || cell);
+    const from = src.getBoundingClientRect();
+    const to = cell.getBoundingClientRect();
+    const clone = document.createElement('div');
+    clone.className = `tile fly-tile ${ev.color}`;
+    clone.style.left = from.left + 'px';
+    clone.style.top = from.top + 'px';
+    clone.style.width = to.width + 'px';
+    clone.style.height = to.height + 'px';
+    document.body.appendChild(clone);
+    Sound.take();
+    const dx = to.left - from.left, dy = to.top - from.top;
     const a = clone.animate([
       { transform: 'translate(0,0) scale(1)' },
       { transform: `translate(${dx * 0.5}px, ${dy * 0.5 - 22}px) scale(1.18)`, offset: 0.5 },
       { transform: `translate(${dx}px, ${dy}px) scale(1)` },
     ], { duration: 700, easing: 'cubic-bezier(.3,.6,.35,1)', fill: 'both' });
-    a.onfinish = r;
-    setTimeout(r, 1000); // 后台标签页兜底
+    let done = false;
+    const fin = () => { if (!done) { done = true; clone.remove(); resolve(); } };
+    a.onfinish = fin;
+    setTimeout(fin, 1000); // 后台标签页兜底
   });
-  clone.remove();
-
-  // 点亮
-  cell.classList.add('filled', 'lit', 'just-placed');
-  Sound.place();
-  await fxWait(280);
-  cell.classList.remove('just-placed');
-
-  // 相邻连线抖动（有邻接才有）
-  const linked = connectedCells(board, ev.row, ev.col);
-  if (linked.length > 1) {
-    linked.forEach((c) => c.classList.add('adj-shake'));
-    Sound.combo(linked.length);
-    await fxWait(450);
-    linked.forEach((c) => c.classList.remove('adj-shake'));
-  }
-
-  // 飘分 + 分数累加
-  spawnFloat(cell, ev.points);
-  tick(ev.points);
-  Sound.score();
-  await fxWait(580);
 }
 
-// 地板扣分：抖动 → 飘负分 → 瓷砖淡出
-async function animateFloorPenalty(board, ev, tick) {
-  const floor = board.querySelector('.floor-row');
-  if (!floor || ev.points === 0) return;
-  const tiles = [...floor.querySelectorAll('.tile')];
-  tiles.forEach((t) => t.classList.add('adj-shake'));
-  await fxWait(450);
-  tiles.forEach((t) => { t.classList.remove('adj-shake'); t.classList.add('tile-consumed'); });
-  spawnFloat(floor, ev.points);
-  tick(ev.points);
-  Sound.penalty();
-  await fxWait(650);
-}
-
-// 总演出：按座位顺序切到每个玩家的板子，逐块结算
-async function playScoringCinematic(scoreEvents, commit) {
+/**
+ * 回合结算演出（状态驱动重放）：
+ * 从结算前快照出发，按服务端 scoreEvents 逐步推进本地副本并 setGame 渲染——
+ * 墙格点亮、玩家板分数、顶部"我的得分"、玩家标签分数全部同步逐步累加。
+ * 最后提交服务端最终状态（含终局奖励），保证与服务端严格一致。
+ */
+async function playScoringCinematic(preScore, scoreEvents, finalState, commit) {
+  if (!preScore) { commit(finalState); return; }
   const gen = fxGen;
-  try {
-    document.body.classList.add('scoring-lock');
-    const banner = document.createElement('div');
-    banner.id = 'scoring-banner';
-    banner.className = 'scoring-banner';
-    banner.textContent = '🧮 回合结算';
-    document.body.appendChild(banner);
+  const st = structuredClone(preScore);
+  const banner = document.createElement('div');
+  banner.id = 'scoring-banner';
+  banner.className = 'scoring-banner';
+  banner.textContent = '🧮 回合结算';
+  document.body.appendChild(banner);
+  document.body.classList.add('scoring-lock');
+  const render = () => { commit(structuredClone(st)); return fxWait(60); }; // 等 React 出帧
 
+  try {
     for (const { seatIndex, events } of scoreEvents) {
       if (gen !== fxGen) break;
       if (!events || events.length === 0) continue;
+      const pl = st.players[seatIndex];
+      banner.textContent = `🧮 回合结算 · ${pl.nickname}${pl.isAi ? ' 🤖' : ''}`;
       if (FxBus.setViewSeat) FxBus.setViewSeat(seatIndex);
-      await fxWait(520); // 留时间渲染与视线转移
+      await fxWait(560); // 视线转移 + 渲染该玩家的板子
 
-      const board = document.querySelector(`.board[data-seat="${seatIndex}"]`);
-      if (!board) continue;
-      const nameEl = board.querySelector('.board-head .name');
-      banner.textContent = `🧮 回合结算 · ${nameEl ? nameEl.textContent : ''}`;
-
-      const scoreSpan = board.querySelector('.board-head .score span');
-      let running = parseInt((scoreSpan && scoreSpan.textContent) || '0', 10) || 0;
-      const tick = (delta) => {
-        running = Math.max(0, running + delta);
-        if (scoreSpan) {
-          scoreSpan.textContent = running;
-          scoreSpan.classList.remove('score-pop');
-          void scoreSpan.offsetWidth; // 重启动画
-          scoreSpan.classList.add('score-pop');
-        }
-      };
       for (const ev of events) {
         if (gen !== fxGen) break;
-        if (ev.type === 'wall') await animateWallPlacement(board, ev, tick);
-        else if (ev.type === 'floor') await animateFloorPenalty(board, ev, tick);
+        const board = document.querySelector(`.board[data-seat="${seatIndex}"]`);
+        if (!board) break;
+
+        if (ev.type === 'wall') {
+          // 1) 飞行：图案行最右瓷砖平移到墙壁目标格
+          await slideToWallFx(board, ev);
+          // 2) 状态推进：清空该图案行 + 点亮墙格 + 加分（React 渲染，所有分数同步更新）
+          pl.patternLines[ev.row] = { color: null, count: 0 };
+          pl.wall[ev.row][ev.col] = true;
+          pl.score += ev.points;
+          await render();
+          // 3) 装饰：点亮辉光 / 相邻连线抖动 / 飘分（只加临时类，随后全部清除）
+          const b2 = document.querySelector(`.board[data-seat="${seatIndex}"]`);
+          const cell = b2 && b2.querySelectorAll('.wall-row')[ev.row].children[ev.col];
+          if (cell) {
+            cell.classList.add('lit');
+            Sound.place();
+            const linked = connectedCells(b2, ev.row, ev.col);
+            if (ev.points > 1 && linked.length > 1) {
+              await fxWait(180);
+              linked.forEach((c) => c.classList.add('adj-shake'));
+              Sound.combo(Math.min(ev.points, 6));
+              await fxWait(480);
+              linked.forEach((c) => c.classList.remove('adj-shake'));
+            }
+            spawnFloat(cell, ev.points);
+            Sound.score();
+            setTimeout(() => cell.classList.remove('lit'), 800);
+          }
+          await fxWait(680);
+        } else if (ev.type === 'floor') {
+          // 地板扣分：抖动 → 飘负分 → 状态推进（清空地板 + 扣分）
+          const floorEl = board.querySelector('.floor-row');
+          if (floorEl && ev.points !== 0) {
+            floorEl.classList.add('adj-shake');
+            await fxWait(460);
+            floorEl.classList.remove('adj-shake');
+            spawnFloat(floorEl, ev.points);
+            Sound.penalty();
+          }
+          pl.score += ev.points; // 服务端已按"不低于 0"截断，直接累加即与服务端一致
+          pl.floor = [];
+          await render();
+          await fxWait(620);
+        }
       }
-      await fxWait(380);
+      sweepFxClasses();
+      await fxWait(320);
     }
   } catch { /* 演出异常不能阻塞游戏 */ }
+  sweepFxClasses();
   document.body.classList.remove('scoring-lock');
   const b = document.getElementById('scoring-banner');
   if (b) b.remove();
   if (FxBus.setViewSeat && FxBus.mySeat >= 0) FxBus.setViewSeat(FxBus.mySeat);
-  commit();
+  commit(finalState); // 最终以服务端状态为准（含终局奖励、新一轮工厂供货）
 }
 
 // 根据 lastAction 播放"来源 → 目标玩家板"的飞砖动画，结束后提交新状态
@@ -787,16 +800,6 @@ function GameOverModal({ ranking, onBack }) {
           <div key={r.seatIndex} className={`rank-row ${r.rank === 1 ? 'first' : ''}`}>
             <span className="medal">{medals[r.rank - 1]}</span>
             <span className="rname">{r.nickname}{r.isAi ? ' 🤖' : ''}</span>
-            {r.bonus && r.bonus.points > 0 && (
-              <span className="bonus-note" title="终局奖励：横排+2 / 竖列+7 / 同色5块+10">
-                奖励 +{r.bonus.points}
-                <small>
-                  {r.bonus.rows > 0 && ` 横排×${r.bonus.rows}`}
-                  {r.bonus.cols > 0 && ` 竖列×${r.bonus.cols}`}
-                  {r.bonus.colors > 0 && ` 同色×${r.bonus.colors}`}
-                </small>
-              </span>
-            )}
             <span className="rscore">{r.score} 分</span>
           </div>
         ))}
@@ -872,8 +875,9 @@ function App() {
       }
     });
     s.on('round_scored', ({ scoreEvents, finalState }) => {
+      const base = gameRef.current; // 此刻必为刚收到的"结算前快照"
       gameRef.current = finalState;
-      fxEnqueue((done) => playScoringCinematic(scoreEvents, () => { setGame(finalState); done(); }));
+      fxEnqueue((done) => playScoringCinematic(base, scoreEvents, finalState, setGame).then(done));
     });
     s.on('ai_thinking', ({ nickname, model }) => toast(`🤖 ${nickname}（${model}）思考中…`));
     s.on('room_update', (r) => {

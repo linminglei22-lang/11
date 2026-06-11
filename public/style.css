@@ -153,26 +153,27 @@ table.rooms th { color: var(--ink-soft); font-size: 13px; font-weight: 600; }
   content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
   background: linear-gradient(118deg, transparent 30%, rgba(255,255,255,.32) 45%, transparent 58%);
 }
-/* 摩尔风格纹样：中心圆环 + 四角花点 */
+/* 葡萄牙花砖纹样：每种颜色一个独立图案（SVG 矢量，随瓷砖缩放） */
 .tile::after {
   content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
-  --m: rgba(255,255,255,.30);
-  background-image:
-    radial-gradient(circle at 50% 50%, var(--m) 0 2.5px, transparent 3.5px),
-    radial-gradient(circle at 50% 50%, transparent 6.5px, var(--m) 7.5px 8.5px, transparent 9.5px),
-    radial-gradient(circle at 21% 21%, var(--m) 0 1.8px, transparent 2.8px),
-    radial-gradient(circle at 79% 21%, var(--m) 0 1.8px, transparent 2.8px),
-    radial-gradient(circle at 21% 79%, var(--m) 0 1.8px, transparent 2.8px),
-    radial-gradient(circle at 79% 79%, var(--m) 0 1.8px, transparent 2.8px);
+  background-repeat: no-repeat; background-size: 100% 100%;
 }
 .tile.sm { width: 22px; height: 22px; border-radius: 5px; }
-.tile.sm::after { transform: scale(.72); }
 .tile.blue { --t-hi: #4a92c3; --t-lo: #1c5680; }
 .tile.yellow { --t-hi: #f0c75e; --t-lo: #c08c26; }
 .tile.red { --t-hi: #cf5a40; --t-lo: #8e2e1e; }
 .tile.black { --t-hi: #5d525b; --t-lo: #272028; }
 .tile.white { --t-hi: #fdf9ee; --t-lo: #d9cdab; }
-.tile.white::after { --m: rgba(122, 98, 60, .20); }
+/* 蓝：四瓣花 */
+.tile.blue::after { background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 34 34'><g fill='rgba(255,255,255,.32)'><ellipse cx='17' cy='9.5' rx='3.6' ry='5.6'/><ellipse cx='17' cy='24.5' rx='3.6' ry='5.6'/><ellipse cx='9.5' cy='17' rx='5.6' ry='3.6'/><ellipse cx='24.5' cy='17' rx='5.6' ry='3.6'/></g><circle cx='17' cy='17' r='3' fill='rgba(255,255,255,.55)'/></svg>"); }
+/* 黄：菱形宝石格 */
+.tile.yellow::after { background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 34 34'><path d='M17 4.5L29.5 17 17 29.5 4.5 17Z' fill='none' stroke='rgba(255,255,255,.5)' stroke-width='1.4'/><path d='M17 10.5L23.5 17 17 23.5 10.5 17Z' fill='rgba(255,255,255,.28)'/></svg>"); }
+/* 红：八角星（双正方形交叠） */
+.tile.red::after { background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 34 34'><g fill='none' stroke='rgba(255,255,255,.45)' stroke-width='1.4'><rect x='10' y='10' width='14' height='14'/><rect x='10' y='10' width='14' height='14' transform='rotate(45 17 17)'/></g><circle cx='17' cy='17' r='2.2' fill='rgba(255,255,255,.5)'/></svg>"); }
+/* 黑：四角星芒 */
+.tile.black::after { background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 34 34'><path d='M17 5L19.7 14.3 29 17 19.7 19.7 17 29 14.3 19.7 5 17 14.3 14.3Z' fill='rgba(255,255,255,.30)'/><circle cx='17' cy='17' r='1.8' fill='rgba(255,255,255,.55)'/></svg>"); }
+/* 白：同心圆环 + 十字花（深色描线） */
+.tile.white::after { background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 34 34'><g fill='none' stroke='rgba(122,96,58,.35)' stroke-width='1.3'><circle cx='17' cy='17' r='8'/><circle cx='17' cy='17' r='4'/><path d='M17 4.5v5M17 24.5v5M4.5 17h5M24.5 17h5'/></g></svg>"); }
 .tile.first {
   background: #fff; border: 2px solid var(--accent);
   display: inline-flex; align-items: center; justify-content: center;
