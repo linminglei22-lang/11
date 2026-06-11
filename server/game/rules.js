@@ -271,7 +271,8 @@ function finalScoring(state) {
       nickname: p.nickname,
       isAi: p.isAi,
       score: p.score,
-      rows: p.wall.filter((row) => row.every(Boolean)).length,
+      rows: p.wall.filter((row) => row.every(Boolean)).length, // 平分时定胜负用，不展示
+      bonus: p.finalBonus, // { rows, cols, colors, points } 终局奖励明细
     }))
     .sort((a, b) => b.score - a.score || b.rows - a.rows)
     .map((e, idx) => ({ ...e, rank: idx + 1 }));

@@ -787,7 +787,16 @@ function GameOverModal({ ranking, onBack }) {
           <div key={r.seatIndex} className={`rank-row ${r.rank === 1 ? 'first' : ''}`}>
             <span className="medal">{medals[r.rank - 1]}</span>
             <span className="rname">{r.nickname}{r.isAi ? ' 🤖' : ''}</span>
-            <span style={{ fontSize: 12, color: 'var(--ink-soft)' }}>完成横排 ×{r.rows}</span>
+            {r.bonus && r.bonus.points > 0 && (
+              <span className="bonus-note" title="终局奖励：横排+2 / 竖列+7 / 同色5块+10">
+                奖励 +{r.bonus.points}
+                <small>
+                  {r.bonus.rows > 0 && ` 横排×${r.bonus.rows}`}
+                  {r.bonus.cols > 0 && ` 竖列×${r.bonus.cols}`}
+                  {r.bonus.colors > 0 && ` 同色×${r.bonus.colors}`}
+                </small>
+              </span>
+            )}
             <span className="rscore">{r.score} 分</span>
           </div>
         ))}
