@@ -46,7 +46,27 @@ npm start          # 默认 http://localhost:3000
 - **同一 WiFi / 局域网**：把该地址发给朋友，对方浏览器打开、注册账号、在大厅加入你的房间即可。首次可能需要在 Windows 防火墙弹窗中允许 Node.js 访问专用网络（或手动放行 3000 端口入站）。
 - **不在同一网络**：任选其一——
   1. 内网穿透：`cloudflared tunnel --url http://localhost:3000`（免费）或 ngrok，把生成的公网链接发给朋友；
-  2. 部署到云服务器：`npm install && JWT_SECRET=xxx PORT=80 npm start`。
+  2. 部署到 Render（见下节）或其他云服务器。
+
+## 部署到 Render（免费公网访问）
+
+项目已带 `render.yaml` 部署蓝图。步骤：
+
+1. 推送到 GitHub（首次需登录）：
+   ```powershell
+   gh auth login                 # 浏览器确认登录
+   cd azul-online
+   gh repo create azul-online --private --source . --push
+   ```
+2. 打开 [dashboard.render.com](https://dashboard.render.com)（用 GitHub 账号注册/登录）→ **New → Blueprint** → 选择 `azul-online` 仓库 → **Apply**。
+3. 等待构建完成（约 1-2 分钟），获得 `https://azul-online-xxxx.onrender.com` 公网地址，发给朋友即可联机。
+
+之后每次 `git push`，Render 会自动重新部署。
+
+**免费套餐注意事项**：
+- 15 分钟无访问会休眠，下次打开需等约 30-60 秒冷启动；
+- 磁盘是临时的：**每次部署/重启后 SQLite 数据（账号、战绩）会清空**，大家重新注册即可。要长期保留数据，升级付费套餐并按 `render.yaml` 内注释挂载持久磁盘 + 设置 `DATA_DIR=/var/data`；
+- `JWT_SECRET` 由蓝图自动生成，无需手动配置。
 
 ## 可靠性
 
