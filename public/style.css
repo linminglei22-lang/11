@@ -115,6 +115,13 @@ table.rooms th { color: var(--ink-soft); font-size: 13px; font-weight: 600; }
 .status-pill.waiting { background: #e4efe2; color: #34693a; }
 .status-pill.playing { background: #f7e2cd; color: #9c5317; }
 .create-form { display: flex; flex-direction: column; gap: 12px; }
+.stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.stat {
+  background: #fffdf8; border: 1px solid var(--line); border-radius: 10px;
+  padding: 12px 8px; text-align: center; display: flex; flex-direction: column; gap: 4px;
+}
+.stat .num { font-size: 22px; font-weight: 800; color: var(--accent-dark); }
+.stat .lbl { font-size: 12px; color: var(--ink-soft); }
 .empty-hint { color: var(--ink-soft); padding: 26px 0; text-align: center; }
 
 /* ---------- 房间 ---------- */

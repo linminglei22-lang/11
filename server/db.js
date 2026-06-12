@@ -47,4 +47,7 @@ db.exec(`
   );
 `);
 
+// 迁移：为已有库补充名次列（终局名次，1 = 胜者；NULL = 未完整打完的对局）
+try { db.exec('ALTER TABLE game_players ADD COLUMN rank INTEGER'); } catch { /* 列已存在 */ }
+
 module.exports = db;

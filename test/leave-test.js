@@ -56,7 +56,11 @@ const emit = (s, ev, payload) =>
     env: { ...process.env, PORT: String(PORT), DATA_DIR: tmpData },
     stdio: 'ignore',
   });
-  await wait(1500);
+  // 轮询等待服务就绪（至多 15s）
+  for (let i = 0; ; i++) {
+    try { await fetch(BASE); break; }
+    catch { if (i > 30) { console.error('✘ 测试服务器未能启动'); cleanup(1); } await wait(500); }
+  }
 
   const t1 = await register('u1@test.com', '玩家一');
   const t2 = await register('u2@test.com', '玩家二');
@@ -93,10 +97,13 @@ const emit = (s, ev, payload) =>
   ok(lastRoom && lastRoom.members[0].isAi === true, '退出者座位已转为 AI 托管');
   ok(lastRoom.hostUserId !== null && lastRoom.members.some((m) => !m.isAi), '房主移交给剩余真人');
 
-  // 托管 AI 能正常行动（等它至少走一手）
+  // 对局未卡死：若轮到托管 AI（座位 0）它应自动行动；若轮到玩家二则属正常等待
   const seqBefore = lastState.seq;
   await wait(4000);
-  ok(lastState.seq > seqBefore, `托管 AI 正常行动（seq ${seqBefore} → ${lastState.seq}）`);
+  const aiActed = lastState.seq > seqBefore;
+  const humanTurn = lastState.currentPlayer === 1;
+  ok(aiActed || humanTurn,
+    `托管后对局未卡死（${aiActed ? `AI 已行动 seq ${seqBefore}→${lastState.seq}` : '正常等待玩家二行动'}）`);
 
   // 玩家二也退出 → 没有真人 → 房间解散
   let roomList = null;

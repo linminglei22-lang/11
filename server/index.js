@@ -5,6 +5,7 @@ const http = require('http');
 const { Server } = require('socket.io');
 
 const { router: authRouter } = require('./auth');
+const { router: statsRouter } = require('./stats');
 const rooms = require('./rooms');
 
 const app = express();
@@ -13,6 +14,7 @@ const io = new Server(server);
 
 app.use(express.json());
 app.use('/api/auth', authRouter);
+app.use('/api/stats', statsRouter);
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
 // SPA 回退

@@ -416,6 +416,17 @@ function AuthPage({ onAuthed }) {
 function LobbyPage({ socket, roomList, toast }) {
   const [name, setName] = useState('');
   const [maxPlayers, setMaxPlayers] = useState(2);
+  const [myStats, setMyStats] = useState(null);
+  const [board, setBoard] = useState([]);
+
+  // 进入大厅时拉取战绩与排行榜（打完一局回来会自动刷新）
+  useEffect(() => {
+    const headers = { Authorization: `Bearer ${localStorage.getItem('azul_token')}` };
+    fetch('/api/stats/me', { headers })
+      .then((r) => r.json()).then((d) => !d.error && setMyStats(d)).catch(() => {});
+    fetch('/api/stats/leaderboard', { headers })
+      .then((r) => r.json()).then((d) => Array.isArray(d) && setBoard(d)).catch(() => {});
+  }, []);
 
   const createRoom = () => {
     socket.emit('create_room', { name, maxPlayers: Number(maxPlayers) }, (res) => {
@@ -430,6 +441,7 @@ function LobbyPage({ socket, roomList, toast }) {
 
   return (
     <div className="lobby-grid">
+      <div>
       <div className="card">
         <h3>房间列表</h3>
         {roomList.length === 0 ? (
@@ -463,6 +475,36 @@ function LobbyPage({ socket, roomList, toast }) {
           </table>
         )}
       </div>
+
+      {/* 排行榜（按胜场，其次累计得分） */}
+      <div className="card" style={{ marginTop: 20 }}>
+        <h3>🏆 排行榜</h3>
+        {board.length === 0 ? (
+          <div className="empty-hint">还没有完整对局，打完一局就会上榜</div>
+        ) : (
+          <table className="rooms">
+            <thead>
+              <tr><th>#</th><th>玩家</th><th>场次</th><th>胜场</th><th>胜率</th><th>累计得分</th><th>最高分</th></tr>
+            </thead>
+            <tbody>
+              {board.map((r, i) => (
+                <tr key={r.userId}>
+                  <td>{['🥇', '🥈', '🥉'][i] || i + 1}</td>
+                  <td>{r.nickname}</td>
+                  <td>{r.games}</td>
+                  <td>{r.wins}</td>
+                  <td>{r.winRate}%</td>
+                  <td><b>{r.totalScore}</b></td>
+                  <td>{r.bestScore}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+      </div>
+
+      <div>
       <div className="card">
         <h3>创建房间</h3>
         <div className="create-form">
@@ -475,6 +517,26 @@ function LobbyPage({ socket, roomList, toast }) {
           </select>
           <button onClick={createRoom}>创建房间</button>
         </div>
+      </div>
+
+      {/* 我的累计战绩 */}
+      <div className="card" style={{ marginTop: 20 }}>
+        <h3>📊 我的战绩</h3>
+        {!myStats ? (
+          <div className="empty-hint">加载中…</div>
+        ) : myStats.games === 0 ? (
+          <div className="empty-hint">还没有完整对局记录</div>
+        ) : (
+          <div className="stats-grid">
+            <div className="stat"><span className="num">{myStats.games}</span><span className="lbl">总场次</span></div>
+            <div className="stat"><span className="num">{myStats.wins}</span><span className="lbl">胜场</span></div>
+            <div className="stat"><span className="num">{myStats.winRate}%</span><span className="lbl">胜率</span></div>
+            <div className="stat"><span className="num">{myStats.totalScore}</span><span className="lbl">累计得分</span></div>
+            <div className="stat"><span className="num">{myStats.avgScore}</span><span className="lbl">场均得分</span></div>
+            <div className="stat"><span className="num">{myStats.bestScore}</span><span className="lbl">单局最高</span></div>
+          </div>
+        )}
+      </div>
       </div>
     </div>
   );

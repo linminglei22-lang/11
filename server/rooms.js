@@ -400,9 +400,11 @@ function afterAction(io, room, result) {
     room.status = 'finished';
     db.prepare('UPDATE games SET status = ? WHERE id = ?').run('finished', room.id);
     const upd = db.prepare(
-      'UPDATE game_players SET score = ? WHERE game_id = ? AND seat_index = ?'
+      'UPDATE game_players SET score = ?, rank = ? WHERE game_id = ? AND seat_index = ?'
     );
-    room.state.players.forEach((p, i) => upd.run(p.score, room.id, i));
+    for (const r of room.state.winnerRanking) {
+      upd.run(r.score, r.rank, room.id, r.seatIndex);
+    }
     saveState(room);
     io.to(`room:${room.id}`).emit('game_over', { ranking: room.state.winnerRanking });
     io.to('lobby').emit('room_list', lobbyList());
