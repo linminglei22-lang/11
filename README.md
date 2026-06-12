@@ -48,6 +48,37 @@ npm start          # 默认 http://localhost:3000
   1. 内网穿透：`cloudflared tunnel --url http://localhost:3000`（免费）或 ngrok，把生成的公网链接发给朋友；
   2. 部署到 Render（见下节）或其他云服务器。
 
+## 部署到阿里云 ECS（推荐，国内访问快）
+
+假设系统为 Ubuntu / Alibaba Cloud Linux，SSH 登录后执行：
+
+```bash
+# 1. 安装 Node 24（国内 npmmirror 镜像，速度快）
+wget -q https://npmmirror.com/mirrors/node/v24.14.1/node-v24.14.1-linux-x64.tar.xz -O /tmp/node.tar.xz
+sudo tar -xJf /tmp/node.tar.xz -C /usr/local --strip-components=1
+node -v   # 应显示 v24.14.1
+
+# 2. 获取代码（仓库私有时先在 GitHub 设为 Public，或改用 scp 上传）
+git clone https://github.com/linminglei22-lang/11.git azul-online
+cd azul-online
+
+# 3. 安装依赖（国内镜像）
+npm config set registry https://registry.npmmirror.com
+npm install --omit=dev
+
+# 4. 用 pm2 守护进程，开机自启
+npm install -g pm2
+JWT_SECRET=$(head -c 32 /dev/urandom | base64) PORT=80 pm2 start server/index.js --name azul
+pm2 save && pm2 startup   # 按提示执行它输出的那行命令
+```
+
+然后在**阿里云控制台 → ECS 实例 → 安全组 → 入方向规则**放行 TCP 80 端口（来源 0.0.0.0/0），浏览器访问 `http://服务器公网IP` 即可，把地址发给朋友联机。
+
+- **数据持久**：SQLite 存在 `azul-online/data/`，重启不丢（比 Render 免费版强）
+- **更新部署**：`cd azul-online && git pull && pm2 restart azul`
+- **查看日志**：`pm2 logs azul`（大模型 AI 的调用错误都在这里看）
+- **备案提示**：用 IP 直接访问无需备案；如果要绑定域名（80/443 端口），中国大陆服务器需要先完成 ICP 备案
+
 ## 部署到 Render（免费公网访问）
 
 项目已带 `render.yaml` 部署蓝图。步骤：
