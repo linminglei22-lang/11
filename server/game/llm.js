@@ -10,7 +10,8 @@ const SYSTEM_PROMPT =
   '策略要领：上墙位置尽量与已贴瓷砖横竖相邻以叠加连线分；有意识地围绕同一纵列(+7)和同一颜色(+10)规划多轮收集；' +
   '行容量越大越难填满，前期慎开第4、5行；权衡抢先手标记的价值与其地板扣分；留意对手即将完成的行，必要时拿走他需要的颜色。' +
   '只输出一个 JSON 对象，不要输出任何其他内容，格式：' +
-  '{"think": "<你的局面分析与选择理由，60-150字，单段不换行>", "action": <操作序号(整数)>, "say": "<一句简短台词，可选>"}';
+  '{"think": "<你的局面分析与选择理由，60-150字，单段不换行>", "action": <操作序号(整数)>, "say": "<一句简短台词>"}。' +
+  '三个字段全部必填，think 字段绝对不能省略或留空。';
 
 function describeBoard(p, label) {
   const lines = p.patternLines
@@ -74,6 +75,10 @@ async function chooseAction(state, seat, cfg) {
   if (!/moonshot|kimi/i.test(baseUrl)) {
     body.temperature = 0.3;
   }
+  // JSON 严格模式：让模型必须输出合法 JSON（含 think 字段），各主流服务商均支持
+  if (/deepseek|moonshot|kimi|bigmodel|dashscope|openai/i.test(baseUrl)) {
+    body.response_format = { type: 'json_object' };
+  }
   // 思考开关：DeepSeek v4 与智谱 GLM-4.5+ 都用 thinking: {type} 参数控制
   // （思考过程与答案共享 token 配额，必须显式管理）。
   // 仅对已知支持的服务商下发，避免其他 OpenAI 兼容服务商拒绝未知字段。
@@ -117,6 +122,10 @@ async function chooseAction(state, seat, cfg) {
   const thinkField = typeof parsed.think === 'string' ? parsed.think.trim() : '';
   let thinking = deep ? (reasoning || thinkField) : (thinkField || reasoning);
   if (!thinking) thinking = text.replace(m[0], '').replace(/<\/?think>/g, '').trim();
+  if (!thinking) {
+    // 诊断日志：哪家模型不按格式给 think，从这里能看到原始回复
+    console.warn(`[LLM AI] ${body.model} 回复缺少 think 字段，原始内容: ${text.slice(0, 200)}`);
+  }
   return {
     action: actions[idx],
     say: typeof parsed.say === 'string' ? parsed.say.slice(0, 60) : null,
