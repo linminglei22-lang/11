@@ -87,6 +87,7 @@ function setup(io) {
   restoreRooms();
   // 恢复的对局若轮到 AI，立即调度，避免卡住
   for (const room of rooms.values()) scheduleAi(io, room);
+  startSweeper(io);
   // 握手鉴权
   io.use((socket, next) => {
     const user = verifyToken(socket.handshake.auth?.token);
@@ -162,8 +163,11 @@ function setup(io) {
     socket.on('leave_room', (_payload, cb) => {
       const room = findUserRoom(user.id);
       if (!room) return cb?.({ ok: true });
-      if (room.status === 'playing') return cb?.({ error: '游戏进行中无法离开（可直接关闭页面，AI 不会接管）' });
-      removeMember(io, room, user.id);
+      if (room.status === 'playing') {
+        takeOverByAi(io, room, user.id); // 中途退出：座位由 AI 托管，对局继续
+      } else {
+        removeMember(io, room, user.id);
+      }
       socket.leave(`room:${room.id}`);
       cb?.({ ok: true });
     });
@@ -300,6 +304,67 @@ function removeMember(io, room, userId) {
   }
   if (rooms.has(room.id)) io.to(`room:${room.id}`).emit('room_update', roomDetail(room));
   io.to('lobby').emit('room_list', lobbyList());
+}
+
+// 对局中玩家退出：座位转为困难 AI 托管；没有真人了就解散房间
+function takeOverByAi(io, room, userId) {
+  const seat = room.members.findIndex((m) => !m.isAi && m.userId === userId);
+  if (seat < 0) return;
+  const m = room.members[seat];
+  const nickname = m.nickname;
+  room.members[seat] = {
+    userId: null, aiId: `ai-takeover-${seat}`, nickname: `${nickname}(托管)`,
+    isAi: true, difficulty: 'hard',
+  };
+  if (room.state && room.state.players[seat]) {
+    room.state.players[seat].isAi = true;
+    room.state.players[seat].userId = null;
+    room.state.players[seat].nickname = `${nickname}(托管)`;
+  }
+
+  const humans = room.members.filter((x) => !x.isAi);
+  if (humans.length === 0) {
+    if (room.aiTimer) clearTimeout(room.aiTimer);
+    rooms.delete(room.id);
+    db.prepare('UPDATE games SET status = ? WHERE id = ?').run('finished', room.id);
+    io.to('lobby').emit('room_list', lobbyList());
+    return;
+  }
+  if (room.hostUserId === userId) room.hostUserId = humans[0].userId;
+  saveState(room);
+  io.to(`room:${room.id}`).emit('player_left', { nickname });
+  io.to(`room:${room.id}`).emit('room_update', roomDetail(room));
+  io.to(`room:${room.id}`).emit('game_state', publicState(room));
+  io.to('lobby').emit('room_list', lobbyList());
+  scheduleAi(io, room); // 若正轮到退出者，托管 AI 立即接手
+}
+
+// 空房巡检：所有真人离线超过 TTL 的房间自动解散（含部署/重启后无人重连的恢复对局）
+const EMPTY_ROOM_TTL = 5 * 60 * 1000;
+function startSweeper(io) {
+  setInterval(() => {
+    const now = Date.now();
+    let changed = false;
+    for (const room of rooms.values()) {
+      const anyConnected = room.members.some((m) => !m.isAi && m.connected);
+      if (anyConnected) {
+        room.emptySince = null;
+        continue;
+      }
+      if (!room.emptySince) {
+        room.emptySince = now;
+        continue;
+      }
+      if (now - room.emptySince > EMPTY_ROOM_TTL) {
+        if (room.aiTimer) clearTimeout(room.aiTimer);
+        rooms.delete(room.id);
+        db.prepare('UPDATE games SET status = ? WHERE id = ?').run('finished', room.id);
+        console.log(`房间 #${room.id}「${room.name}」长时间无人，已自动清理`);
+        changed = true;
+      }
+    }
+    if (changed) io.to('lobby').emit('room_list', lobbyList());
+  }, 60 * 1000);
 }
 
 // 发送给前端的状态（隐藏袋中顺序，防止前端预测抽牌）

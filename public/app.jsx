@@ -637,6 +637,13 @@ function GamePage({ socket, game, room, user, toast, aiThoughts }) {
           <span>袋中 {game.bagCount} 块</span>
           <span>弃堆 {game.discardCount} 块</span>
           {mySeat >= 0 && <span>我的得分 {game.players[mySeat].score}</span>}
+          {mySeat >= 0 && game.phase === 'playing' && (
+            <button className="small ghost" onClick={() => {
+              if (window.confirm('退出后该座位将由 AI 托管，确定退出对局？')) {
+                socket.emit('leave_room', {}, (res) => res?.error && toast(res.error));
+              }
+            }}>退出对局</button>
+          )}
         </div>
       </div>
 
@@ -897,6 +904,7 @@ function App() {
       fxEnqueue((done) => playScoringCinematic(base, scoreEvents, finalState, setGame).then(done));
     });
     s.on('ai_thinking', ({ nickname, model }) => toast(`🤖 ${nickname}（${model}）思考中…`));
+    s.on('player_left', ({ nickname }) => toast(`👋 ${nickname} 退出了对局，座位由 AI 托管`));
     s.on('room_update', (r) => {
       setRoom((prev) => {
         // 自己被移出（不在成员里）→ 回大厅
