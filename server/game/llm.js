@@ -71,9 +71,10 @@ async function chooseAction(state, seat, cfg) {
     temperature: 0.3,
     max_tokens: deep ? 50000 : 2000,
   };
-  // DeepSeek v4 系列的思考开关（思考过程与答案共享 token 配额）。
-  // 仅对 DeepSeek 下发该参数，避免其他 OpenAI 兼容服务商拒绝未知字段。
-  if (/deepseek/i.test(baseUrl)) {
+  // 思考开关：DeepSeek v4 与智谱 GLM-4.5+ 都用 thinking: {type} 参数控制
+  // （思考过程与答案共享 token 配额，必须显式管理）。
+  // 仅对已知支持的服务商下发，避免其他 OpenAI 兼容服务商拒绝未知字段。
+  if (/deepseek|bigmodel/i.test(baseUrl)) {
     body.thinking = { type: deep ? 'enabled' : 'disabled' };
   }
   const res = await fetch(`${baseUrl}/chat/completions`, {

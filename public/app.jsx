@@ -12,8 +12,8 @@ const LLM_PRESETS = [
   { id: 'ds-pro', label: 'DeepSeek V4 Pro（更强）', baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-v4-pro' },
   { id: 'kimi', label: 'Kimi K2.5（月之暗面）', baseUrl: 'https://api.moonshot.cn/v1', model: 'kimi-k2.5' },
   { id: 'qwen', label: '通义千问（阿里）', baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', model: 'qwen-plus' },
-  { id: 'glm', label: '智谱 GLM', baseUrl: 'https://open.bigmodel.cn/api/paas/v4', model: 'glm-4-flash' },
-  { id: 'openai', label: 'OpenAI', baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o-mini' },
+  { id: 'glm', label: '智谱 GLM-4.7 Flash（免费）', baseUrl: 'https://open.bigmodel.cn/api/paas/v4', model: 'glm-4.7-flash' },
+  { id: 'openai', label: 'OpenAI GPT-5.4 mini', baseUrl: 'https://api.openai.com/v1', model: 'gpt-5.4-mini' },
   { id: 'custom', label: '自定义…', baseUrl: '', model: '' },
 ];
 
