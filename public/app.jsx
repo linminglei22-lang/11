@@ -6,6 +6,17 @@ const COLOR_NAMES = { blue: '蓝', yellow: '黄', red: '红', black: '黑', whit
 const FLOOR_PENALTY_LABELS = ['-1', '-1', '-2', '-2', '-2', '-3', '-3'];
 const DIFF_NAMES = { easy: '简单', medium: '中等', hard: '困难', llm: '大模型' };
 
+// 常用大模型预设：选中后自动填充 API 地址与模型名，用户只需填 API Key
+const LLM_PRESETS = [
+  { id: 'ds-flash', label: 'DeepSeek V4 Flash（快·推荐）', baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-v4-flash' },
+  { id: 'ds-pro', label: 'DeepSeek V4 Pro（更强）', baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-v4-pro' },
+  { id: 'kimi', label: 'Kimi（月之暗面）', baseUrl: 'https://api.moonshot.cn/v1', model: 'kimi-latest' },
+  { id: 'qwen', label: '通义千问（阿里）', baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', model: 'qwen-plus' },
+  { id: 'glm', label: '智谱 GLM', baseUrl: 'https://open.bigmodel.cn/api/paas/v4', model: 'glm-4-flash' },
+  { id: 'openai', label: 'OpenAI', baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o-mini' },
+  { id: 'custom', label: '自定义…', baseUrl: '', model: '' },
+];
+
 /* ============ 音效引擎（WebAudio 合成，无需音频文件） ============ */
 const Sound = (() => {
   let ctx = null;
@@ -473,10 +484,19 @@ function LobbyPage({ socket, roomList, toast }) {
 function RoomPage({ socket, room, user, toast }) {
   const [aiName, setAiName] = useState('');
   const [aiDiff, setAiDiff] = useState('medium');
+  const [llmPreset, setLlmPreset] = useState('ds-flash');
   const [llmCfg, setLlmCfg] = useState({
-    baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-v4-flash', apiKey: '',
+    baseUrl: LLM_PRESETS[0].baseUrl, model: LLM_PRESETS[0].model, apiKey: '', deep: false,
   });
   const isHost = room.hostUserId === user.id;
+
+  const pickPreset = (id) => {
+    setLlmPreset(id);
+    const p = LLM_PRESETS.find((x) => x.id === id);
+    if (p && p.id !== 'custom') {
+      setLlmCfg((c) => ({ ...c, baseUrl: p.baseUrl, model: p.model }));
+    }
+  };
 
   const addAi = () => {
     if (aiDiff === 'llm' && !llmCfg.apiKey.trim()) return toast('请填写 API Key');
@@ -529,14 +549,28 @@ function RoomPage({ socket, room, user, toast }) {
           {aiDiff === 'llm' && (
             <div className="llm-config">
               <div className="llm-hint">
-                接入 OpenAI 兼容接口（DeepSeek / Kimi / 通义等）。API Key 仅保存在服务端内存，不入库、不下发给其他玩家。模型响应失败时自动回退为"困难"启发式 AI。
+                选择模型后只需填 API Key（仅保存在服务端内存，不入库、不下发给其他玩家）。调用失败时自动回退为"困难"启发式 AI。
               </div>
-              <input placeholder="API 地址" value={llmCfg.baseUrl}
-                onChange={(e) => setLlmCfg({ ...llmCfg, baseUrl: e.target.value })} />
-              <input placeholder="模型名（如 deepseek-v4-flash / deepseek-v4-pro）" value={llmCfg.model}
-                onChange={(e) => setLlmCfg({ ...llmCfg, model: e.target.value })} />
+              <select value={llmPreset} onChange={(e) => pickPreset(e.target.value)}>
+                {LLM_PRESETS.map((p) => (
+                  <option key={p.id} value={p.id}>{p.label}</option>
+                ))}
+              </select>
+              {llmPreset === 'custom' && (
+                <>
+                  <input placeholder="API 地址（OpenAI 兼容）" value={llmCfg.baseUrl}
+                    onChange={(e) => setLlmCfg({ ...llmCfg, baseUrl: e.target.value })} />
+                  <input placeholder="模型名" value={llmCfg.model}
+                    onChange={(e) => setLlmCfg({ ...llmCfg, model: e.target.value })} />
+                </>
+              )}
               <input type="password" placeholder="API Key（必填）" value={llmCfg.apiKey}
                 onChange={(e) => setLlmCfg({ ...llmCfg, apiKey: e.target.value })} />
+              <label className="llm-deep">
+                <input type="checkbox" checked={llmCfg.deep}
+                  onChange={(e) => setLlmCfg({ ...llmCfg, deep: e.target.checked })} />
+                深度推理（思考模式）：棋力更强、可看完整推理过程，但每步需 1-3 分钟
+              </label>
             </div>
           )}
         </>

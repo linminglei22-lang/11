@@ -136,6 +136,11 @@ table.rooms th { color: var(--ink-soft); font-size: 13px; font-weight: 600; }
   background: rgba(91, 74, 145, .06); border: 1px dashed #b3a6d6; border-radius: 10px;
 }
 .llm-hint { font-size: 12px; color: var(--ink-soft); line-height: 1.6; }
+.llm-deep {
+  display: flex; align-items: flex-start; gap: 8px;
+  font-size: 13px; color: var(--ink); line-height: 1.5; cursor: pointer;
+}
+.llm-deep input { width: auto; margin-top: 2px; }
 
 /* ---------- 瓷砖 ---------- */
 .tile {

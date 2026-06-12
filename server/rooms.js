@@ -190,8 +190,9 @@ function setup(io) {
         // API Key 只留在服务端内存，不入库、不下发
         member.llm = {
           baseUrl: String(llmCfg.baseUrl || 'https://api.deepseek.com/v1').trim(),
-          model: String(llmCfg.model || 'deepseek-chat').trim(),
+          model: String(llmCfg.model || 'deepseek-v4-flash').trim(),
           apiKey: String(llmCfg.apiKey).trim(),
+          deep: !!llmCfg.deep, // 深度推理（思考模式）
         };
       }
       room.members.push(member);
