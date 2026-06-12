@@ -7,7 +7,8 @@ const SYSTEM_PROMPT =
   '你是桌游《花砖物语(Azul)》的高手玩家。根据给出的局面，从"合法操作列表"中选择一个最优操作。' +
   '规则要点：图案行填满后该行最右1块在回合结算时贴上墙壁并按横竖邻接计分；溢出瓷砖进地板行扣分(-1/-1/-2/-2/-2/-3/-3)；' +
   '终局奖励：完整横排+2、完整纵列+7、集齐同色5块+10；第一个从中央拿瓷砖者获得下轮先手但1号标记计入地板扣分。' +
-  '只输出一个 JSON 对象，格式：{"action": <操作序号(整数)>, "say": "<一句简短中文台词，可选>"}，不要输出其他内容。';
+  '只输出一个 JSON 对象，不要输出任何其他内容，格式：' +
+  '{"think": "<你的局面分析与选择理由，60-150字，单段不换行>", "action": <操作序号(整数)>, "say": "<一句简短台词，可选>"}';
 
 function describeBoard(p, label) {
   const lines = p.patternLines
@@ -58,24 +59,29 @@ async function chooseAction(state, seat, cfg) {
   if (actions.length === 0) return { action: null, say: null };
 
   const baseUrl = String(cfg.baseUrl || 'https://api.deepseek.com/v1').replace(/\/+$/, '');
+  const body = {
+    model: cfg.model || 'deepseek-v4-flash',
+    messages: [
+      { role: 'system', content: SYSTEM_PROMPT },
+      { role: 'user', content: buildPrompt(state, seat, actions) },
+    ],
+    temperature: 0.3,
+    max_tokens: 2000,
+  };
+  // DeepSeek v4 系列：显式关闭思考模式（思考过程极长，会在 JSON 输出前耗尽 token）。
+  // AI 的"想法"改由 JSON 里的 think 字段提供，更快更省。仅对 DeepSeek 下发该参数，
+  // 避免其他 OpenAI 兼容服务商拒绝未知字段。
+  if (/deepseek/i.test(baseUrl)) {
+    body.thinking = { type: 'disabled' };
+  }
   const res = await fetch(`${baseUrl}/chat/completions`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${cfg.apiKey}`,
     },
-    body: JSON.stringify({
-      model: cfg.model || 'deepseek-v4-flash',
-      messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
-        { role: 'user', content: buildPrompt(state, seat, actions) },
-      ],
-      temperature: 0.3,
-      // 推理模型（如 deepseek-v4 思考模式）思考过程与答案共享配额，
-      // 上限太小会在 JSON 输出前被截断，留足余量（8000 在各家上限内安全）
-      max_tokens: 8000,
-    }),
-    signal: AbortSignal.timeout(120000),
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(60000),
   });
   if (!res.ok) {
     const body = await res.text().catch(() => '');
@@ -94,16 +100,16 @@ async function chooseAction(state, seat, cfg) {
   // 优先匹配含 "action" 的 JSON 对象，避免误抓思考过程里的其他花括号
   const m = text.match(/\{[^{}]*"action"[^{}]*\}/) || text.match(/\{[\s\S]*?\}/);
   if (!m) throw new Error(`无法从回复中解析 JSON: ${text.slice(0, 150)}`);
-  const parsed = JSON.parse(m[0]);
+  // 模型偶尔会在 JSON 字符串里输出裸换行（非法 JSON），统一替换为空格
+  const parsed = JSON.parse(m[0].replace(/[\r\n]+/g, ' '));
   const idx = Number(parsed.action);
   if (!Number.isInteger(idx) || idx < 0 || idx >= actions.length) {
     throw new Error(`操作序号越界: ${parsed.action}`);
   }
-  // 提取思考过程：推理模型专用字段优先，否则取 content 里 JSON 之外的文本
-  let thinking = (msg.reasoning_content || '').trim();
-  if (!thinking) {
-    thinking = text.replace(m[0], '').replace(/<\/?think>/g, '').trim();
-  }
+  // 思考内容来源优先级：JSON 的 think 字段 > 推理模型 reasoning_content > content 里 JSON 之外的文本
+  let thinking = typeof parsed.think === 'string' ? parsed.think.trim() : '';
+  if (!thinking) thinking = (msg.reasoning_content || '').trim();
+  if (!thinking) thinking = text.replace(m[0], '').replace(/<\/?think>/g, '').trim();
   return {
     action: actions[idx],
     say: typeof parsed.say === 'string' ? parsed.say.slice(0, 60) : null,
