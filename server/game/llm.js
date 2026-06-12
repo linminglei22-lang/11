@@ -68,9 +68,12 @@ async function chooseAction(state, seat, cfg) {
       { role: 'system', content: SYSTEM_PROMPT },
       { role: 'user', content: buildPrompt(state, seat, actions) },
     ],
-    temperature: 0.3,
     max_tokens: deep ? 50000 : 2000,
   };
+  // Kimi k2.5 等模型强制 temperature=1，自定义值会被 400 拒绝；其余服务商用低温更稳定
+  if (!/moonshot|kimi/i.test(baseUrl)) {
+    body.temperature = 0.3;
+  }
   // 思考开关：DeepSeek v4 与智谱 GLM-4.5+ 都用 thinking: {type} 参数控制
   // （思考过程与答案共享 token 配额，必须显式管理）。
   // 仅对已知支持的服务商下发，避免其他 OpenAI 兼容服务商拒绝未知字段。
