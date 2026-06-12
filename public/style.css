@@ -335,6 +335,25 @@ table.rooms th { color: var(--ink-soft); font-size: 13px; font-weight: 600; }
 .wcell.lit { box-shadow: 0 0 12px 3px rgba(201, 154, 60, .75); transition: box-shadow .25s; }
 .wcell.lit .ghost { opacity: 1; inset: 0; border-radius: 6px; }
 
+/* AI 思考过程面板 */
+.ai-thoughts {
+  margin-top: 14px; background: var(--card); border-radius: var(--radius);
+  box-shadow: var(--shadow); padding: 14px 16px;
+  max-height: 320px; overflow-y: auto;
+}
+.ai-thoughts-head { font-weight: 700; color: var(--accent-dark); margin-bottom: 10px; }
+.ai-thought {
+  border-left: 3px solid var(--line); padding: 6px 10px; margin-bottom: 10px;
+  opacity: .65;
+}
+.ai-thought.latest { border-left-color: var(--teal); opacity: 1; background: rgba(42,111,112,.05); border-radius: 0 8px 8px 0; }
+.ai-thought .who { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+.ai-thought .who .quote { color: var(--teal); font-weight: 400; margin-left: 6px; }
+.ai-thought .txt {
+  font-size: 13px; color: var(--ink-soft); line-height: 1.7; white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .score-float {
   position: fixed; z-index: 85; pointer-events: none;
   transform: translateX(-50%);

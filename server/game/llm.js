@@ -71,11 +71,11 @@ async function chooseAction(state, seat, cfg) {
         { role: 'user', content: buildPrompt(state, seat, actions) },
       ],
       temperature: 0.3,
-      // 推理模型（如 deepseek-v4 思考模式）会先消耗大量 token 思考，
-      // 上限太小会导致 content 为空，必须留足余量
-      max_tokens: 4000,
+      // 推理模型（如 deepseek-v4 思考模式）思考过程与答案共享配额，
+      // 上限太小会在 JSON 输出前被截断，留足余量（8000 在各家上限内安全）
+      max_tokens: 8000,
     }),
-    signal: AbortSignal.timeout(60000),
+    signal: AbortSignal.timeout(120000),
   });
   if (!res.ok) {
     const body = await res.text().catch(() => '');
@@ -99,9 +99,15 @@ async function chooseAction(state, seat, cfg) {
   if (!Number.isInteger(idx) || idx < 0 || idx >= actions.length) {
     throw new Error(`操作序号越界: ${parsed.action}`);
   }
+  // 提取思考过程：推理模型专用字段优先，否则取 content 里 JSON 之外的文本
+  let thinking = (msg.reasoning_content || '').trim();
+  if (!thinking) {
+    thinking = text.replace(m[0], '').replace(/<\/?think>/g, '').trim();
+  }
   return {
     action: actions[idx],
     say: typeof parsed.say === 'string' ? parsed.say.slice(0, 60) : null,
+    thinking: thinking ? thinking.slice(0, 4000) : null,
   };
 }
 

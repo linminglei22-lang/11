@@ -558,7 +558,7 @@ function RoomPage({ socket, room, user, toast }) {
 }
 
 /* ============ 游戏页 ============ */
-function GamePage({ socket, game, room, user, toast }) {
+function GamePage({ socket, game, room, user, toast, aiThoughts }) {
   // 我的座位号（纯观战时为 -1）
   const mySeat = game.players.findIndex((p) => !p.isAi && p.userId === user.id);
   const isMyTurn = game.phase === 'playing' && game.currentPlayer === mySeat;
@@ -678,6 +678,22 @@ function GamePage({ socket, game, room, user, toast }) {
               已选择 <b>{COLOR_NAMES[sel.color]}</b> 色 × {selCount}
               {sel.source === -1 && game.centerHasFirst && '（含 1 号玩家标记，将进入地板行）'}
               ，请点击右侧你的<b>图案行</b>放置（或点击地板行全部弃置）
+            </div>
+          )}
+
+          {/* 大模型 AI 思考过程（最新在上） */}
+          {aiThoughts.length > 0 && (
+            <div className="ai-thoughts">
+              <div className="ai-thoughts-head">🧠 AI 思考过程</div>
+              {[...aiThoughts].reverse().map((t, i) => (
+                <div key={t.ts} className={`ai-thought ${i === 0 ? 'latest' : ''}`}>
+                  <div className="who">
+                    🤖 {t.nickname}
+                    {t.say ? <span className="quote">「{t.say}」</span> : null}
+                  </div>
+                  <div className="txt">{t.thinking}</div>
+                </div>
+              ))}
             </div>
           )}
         </div>
@@ -824,6 +840,7 @@ function App() {
   const [ranking, setRanking] = useState(null);
   const [toastMsg, setToastMsg] = useState('');
   const [muted, setMuted] = useState(Sound.isMuted());
+  const [aiThoughts, setAiThoughts] = useState([]); // 大模型 AI 的思考过程记录
   const toastTimer = useRef(null);
 
   const toast = useCallback((msg) => {
@@ -889,9 +906,12 @@ function App() {
         return r;
       });
     });
-    s.on('game_start', () => { fxReset(); setGame(null); setRanking(null); gameRef.current = null; });
-    s.on('ai_action', ({ nickname, say }) => {
+    s.on('game_start', () => { fxReset(); setGame(null); setRanking(null); setAiThoughts([]); gameRef.current = null; });
+    s.on('ai_action', ({ nickname, say, thinking }) => {
       if (say) toast(`💬 ${nickname}：${say}`);
+      if (thinking) {
+        setAiThoughts((prev) => [...prev.slice(-9), { nickname, say, thinking, ts: Date.now() }]);
+      }
     });
     s.on('game_over', ({ ranking: rk }) => {
       // 排队：等结算演出播完再弹排名
@@ -940,7 +960,7 @@ function App() {
       {!socket ? (
         <div className="empty-hint">连接服务器中…</div>
       ) : inGame ? (
-        <GamePage socket={socket} game={game} room={room} user={user} toast={toast} />
+        <GamePage socket={socket} game={game} room={room} user={user} toast={toast} aiThoughts={aiThoughts} />
       ) : room ? (
         <RoomPage socket={socket} room={room} user={user} toast={toast} />
       ) : (

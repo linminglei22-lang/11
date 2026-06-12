@@ -360,12 +360,13 @@ function scheduleAi(io, room) {
 
     let action = null;
     let say = null;
+    let thinking = null;
     if (isLlm) {
       io.to(`room:${room.id}`).emit('ai_thinking', {
         seatIndex: seat, nickname: member.nickname, model: member.llm.model,
       });
       try {
-        ({ action, say } = await llm.chooseAction(room.state, seat, member.llm));
+        ({ action, say, thinking } = await llm.chooseAction(room.state, seat, member.llm));
       } catch (e) {
         console.error(`[LLM AI] ${member.nickname}(${member.llm.model}) 调用失败，回退启发式:`, e.message);
       }
@@ -384,7 +385,7 @@ function scheduleAi(io, room) {
     if (err) return; // 不应发生；防御性
     const result = rules.applyAction(room.state, seat, action);
     io.to(`room:${room.id}`).emit('ai_action', {
-      seatIndex: seat, nickname: member.nickname, action, say,
+      seatIndex: seat, nickname: member.nickname, action, say, thinking,
     });
     afterAction(io, room, result);
   }, isLlm ? 200 : ai.thinkDelay());
